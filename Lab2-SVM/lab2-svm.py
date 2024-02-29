@@ -16,12 +16,12 @@ def linear_kernel(x, y):
 
 
 # 多项式核函数
-def polynomial_kernel(x, y, p=3):
+def polynomial_kernel(x, y, p=2):
     return (np.dot(x, y) + 1) ** p
 
 
 # RBF核函数
-def rbf_kernel(x, y, sigma=0.5):
+def rbf_kernel(x, y, sigma=1.5):
     return np.exp(-np.linalg.norm(x - y) ** 2 / (2 * sigma ** 2))
 
 
@@ -47,7 +47,7 @@ def train_svm(X, target, kernel):
             P[i, j] = target[i] * target[j] * kernel(X[i], X[j])
 
     start = np.zeros(N)
-    C = 5
+    C = 40
     B = [(0, C) for _ in range(N)]
     XC = {'type': 'eq', 'fun': lambda a: zerofun(a, target)}
 
@@ -65,11 +65,12 @@ def train_svm(X, target, kernel):
 
 # TODO 05: Calculate the b value using equation (7)
 def compute_b(non_zero_alphas, kernel):
-    s = non_zero_alphas[0]
-    alpha_s, x_s, t_s = s
-    b_sum = sum(alpha_i * t_i * kernel(x_i, x_s) for alpha_i, x_i, t_i in non_zero_alphas)
-    b = t_s - b_sum
+    s = non_zero_alphas[0][1]
+    t_s = non_zero_alphas[0][2]
+    b_sum = sum(alpha * t * kernel(x, s) for alpha, x, t in non_zero_alphas)
+    b = b_sum / len(non_zero_alphas) - t_s
     return b
+
 
 
 # TODO 06: indicator function based on equation(6)
@@ -103,11 +104,11 @@ plt.title('Training Data with Class A and Class B')
 plt.legend()
 plt.show()
 # train SVM
-non_zero_alphas, b = train_svm(inputs, targets, polynomial_kernel)
+non_zero_alphas, b = train_svm(inputs, targets, rbf_kernel)
 # plot decision boundary
 xgrid = np.linspace(-5, 5, 50)
 ygrid = np.linspace(-4, 4, 50)
-grid = np.array([[indicator_function(np.array([x, y]), non_zero_alphas, b, polynomial_kernel)
+grid = np.array([[indicator_function(np.array([x, y]), non_zero_alphas, b, rbf_kernel)
                   for x in xgrid]
                  for y in ygrid])
 
@@ -125,3 +126,4 @@ plt.axis('equal')
 plt.legend()
 plt.savefig('svmcontour.pdf')
 plt.show()
+

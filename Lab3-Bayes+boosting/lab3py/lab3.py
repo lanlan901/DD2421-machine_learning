@@ -70,20 +70,34 @@ def mlParams(X, labels, W=None):
 
     # TODO: fill in the code to compute mu and sigma!
     # ==========================
-    for k in classes:
+    # for k in classes:
+    #     index = np.where(labels ==k )[0]
+    #     Xk = X[index]
+    #     #compute mean 均值
+    #     mu_k = np.mean(Xk, axis = 0)
+    #     mu[k, :] = mu_k
+    #     #compute covariance matrix 协方差矩阵
+    #     Xk_center = Xk - mu_k
+    #     sigma_k = np.dot(Xk_center.T, Xk_center) / len(Xk)
+    #     sigma[k, :, :] = sigma_k
+    for j, k in enumerate(classes):
         index = np.where(labels == k)[0]
-        Xk = X[index]
-        Wk = W[index]
+        Xk = X[index, :]
+        Wk = W[index, :]
 
-        weighted_sum = np.sum(Xk * Wk, axis=0)
+        ##每个特征维度的加权和
+        weighted_sum = np.dot(Wk.transpose(), Xk)
+        ##所有权重的总和
         sum_of_weights = np.sum(Wk)
-        mu_k = weighted_sum / sum_of_weights
-        mu[k, :] = mu_k
+        mu[j] = weighted_sum / sum_of_weights
 
-        Xk_centered = Xk - mu_k
-        for i in range(Ndims):
-            sigma[k, i, i] = np.sum(Wk * (Xk_centered[:, i] ** 2)) / sum_of_weights
-
+        ##差值的平方
+        diff_square = (Xk - mu[j, :]) ** 2
+        weighted_sqr_diff = np.dot(np.transpose(Wk), diff_square)
+        ##加权方差
+        weighted_variance = weighted_sqr_diff / sum_of_weights
+        # 创建一个对角矩阵，对角线上的元素是加权方差
+        sigma[j] = np.diag(weighted_variance[0])
     # ==========================
 
     return mu, sigma
@@ -101,19 +115,21 @@ def classifyBayes(X, prior, mu, sigma):
 
     # TODO: fill in the code to compute the log posterior logProb!
     # ==========================
-    for i in range(Npts):
-        for k in range(Nclasses):
+    # 预先计算逆协方差矩阵和行列式的对数
+    inv_sigmas = [np.linalg.inv(sigma[k]) for k in range(Nclasses)]
+    log_dets = [np.linalg.slogdet(sigma[k])[1] for k in range(Nclasses)]
+
+    for k in range(Nclasses):
+        for i in range(Npts):
             diff = X[i] - mu[k]
-            inv_sigma = np.linalg.inv(sigma[k])
-            sign, logdet = np.linalg.slogdet(sigma[k])
-            log_likelihood = -0.5 * np.dot(diff.T, np.dot(inv_sigma, diff))
+            log_likelihood = -0.5 * (diff @ inv_sigmas[k] @ diff.T)
             log_prior = np.log(prior[k][0])
-            log_norm_constant = -0.5 * (Ndims * np.log(2 * np.pi) + logdet)
+            log_norm_constant = -0.5 * (Ndims * np.log(2 * np.pi) + log_dets[k])
             logProb[k, i] = log_likelihood + log_prior + log_norm_constant
     # ==========================
     # one possible way of finding max a-posteriori once
     # you have computed the log posterior
-    h = np.argmax(logProb,axis=0)
+    h = np.argmax(logProb, axis=0)
     return h
 
 # The implemented functions can now be summarized into the `BayesClassifier` class, which we will use later to test the classifier, no need to add anything else here:
@@ -170,12 +186,6 @@ plotGaussian(X,labels,mu,sigma)
 #                   T - number of boosting iterations
 # out:    classifiers - (maximum) length T Python list of trained classifiers
 #              alphas - (maximum) length T Python list of vote weights
-# in: base_classifier - a classifier of the type that we will boost, e.g. BayesClassifier
-#                   X - N x d matrix of N data points
-#              labels - N vector of class labels
-#                   T - number of boosting iterations
-# out:    classifiers - (maximum) length T Python list of trained classifiers
-#              alphas - (maximum) length T Python list of vote weights
 def trainBoost(base_classifier, X, labels, T=10):
     # these will come in handy later on
     Npts, Ndims = np.shape(X)
@@ -193,19 +203,22 @@ def trainBoost(base_classifier, X, labels, T=10):
 
         # do classification for each point
         vote = classifiers[-1].classify(X)
-
+        # =========TODO ============
         # Calculate the weighted error rate
         vote = np.reshape(vote, (Npts, 1))
         labels = np.reshape(labels, (Npts, 1))
+
+        ##compute weighted error
         errors = (vote == labels)  # delta函数，与标签符合 = 1， 不符合 = 0
         e_t = np.sum(wCur * (1 - errors)) / np.sum(wCur)
 
+        ##choose alpha
         alpha = 0.5 * np.log((1 - e_t) / max(e_t, 1e-16))
         alphas.append(alpha)
 
-        # 更新权重
+        # update weights according to the equation
         wCur *= np.exp(-alpha * ((vote == labels) * 2 - 1))
-        # 归一化
+        # normalization
         Z_t = np.sum(wCur)
         wCur /= Z_t
         # ==========================
@@ -222,21 +235,15 @@ def classifyBoost(X, classifiers, alphas, Nclasses):
     Npts = X.shape[0]
     Ncomps = len(classifiers)
 
-    # if we only have one classifier, we may just classify directly
     if Ncomps == 1:
-        return classifiers[0].classify(X)
+        return classifiers[0].classify(X).flatten()  # 确保结果是一维数组
     else:
         votes = np.zeros((Npts, Nclasses))
 
-        # TODO: implement classificiation when we have trained several classifiers!
-        # here we can do it by filling in the votes vector with weighted votes
-        # ==========================
         for classifier, alpha in zip(classifiers, alphas):
             predictions = classifier.classify(X)
             for i in range(Npts):
                 votes[i, predictions[i]] += alpha
-        # ==========================
-
         # one way to compute yPred after accumulating the votes
         return np.argmax(votes, axis=1)
 
